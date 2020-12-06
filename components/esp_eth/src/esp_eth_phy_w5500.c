@@ -19,7 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-#include "esp_rom_gpio.h"
+//#include "esp_rom_gpio.h"
 #include "esp_rom_sys.h"
 #include "w5500.h"
 
@@ -141,10 +141,13 @@ static esp_err_t w5500_reset_hw(esp_eth_phy_t *phy)
     phy_w5500_t *w5500 = __containerof(phy, phy_w5500_t, parent);
     // set reset_gpio_num to a negative value can skip hardware reset phy chip
     if (w5500->reset_gpio_num >= 0) {
-        esp_rom_gpio_pad_select_gpio(w5500->reset_gpio_num);
+        // esp_rom_gpio_pad_select_gpio(w5500->reset_gpio_num); // original
+        // HuyTV
+        gpio_pad_select_gpio(emac->int_gpio_num);
         gpio_set_direction(w5500->reset_gpio_num, GPIO_MODE_OUTPUT);
         gpio_set_level(w5500->reset_gpio_num, 0);
-        esp_rom_delay_us(100); // insert min input assert time
+        // esp_rom_delay_us(100); // insert min input assert time
+        ets_delay_us(100);
         gpio_set_level(w5500->reset_gpio_num, 1);
     }
     return ESP_OK;

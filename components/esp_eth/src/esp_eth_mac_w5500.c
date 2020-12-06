@@ -22,7 +22,7 @@
 #include "esp_system.h"
 #include "esp_intr_alloc.h"
 #include "esp_heap_caps.h"
-#include "esp_rom_gpio.h"
+// #include "esp_rom_gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -574,7 +574,8 @@ static esp_err_t emac_w5500_init(esp_eth_mac_t *mac)
     esp_err_t ret = ESP_OK;
     emac_w5500_t *emac = __containerof(mac, emac_w5500_t, parent);
     esp_eth_mediator_t *eth = emac->eth;
-    esp_rom_gpio_pad_select_gpio(emac->int_gpio_num);
+    // esp_rom_gpio_pad_select_gpio(emac->int_gpio_num);
+    gpio_pad_select_gpio(emac->int_gpio_num);
     gpio_set_direction(emac->int_gpio_num, GPIO_MODE_INPUT);
     gpio_set_pull_mode(emac->int_gpio_num, GPIO_PULLUP_ONLY);
     gpio_set_intr_type(emac->int_gpio_num, GPIO_INTR_NEGEDGE); // active low
