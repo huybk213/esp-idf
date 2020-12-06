@@ -118,6 +118,14 @@ menu "Ethernet"
                 DM9051 is a fast Ethernet controller with an SPI interface.
                 It's also integrated with a 10/100M PHY and MAC.
                 Select to enable DM9051 driver.
+        config ETH_SPI_ETHERNET_W5500
+            bool "Use W5500 (MAC RAW)"
+            help
+                W5500 is a HW TCP/IP embedded Ethernet controller.
+                TCP/IP stack, 10/100 Ethernet MAC and PHY are embedded in a single chip.
+                However the driver in ESP-IDF only enables the RAW MAC mode,
+                making it compatible with the software TCP/IP stack.
+                Say yes to enable W5500 driver.
     endif
 
     menuconfig ETH_USE_OPENETH
