@@ -41,6 +41,7 @@ struct esp_transport_item_t {
     poll_func       _poll_read;     /*!< Poll and read */
     poll_func       _poll_write;    /*!< Poll and write */
     trans_func      _destroy;       /*!< Destroy and free transport */
+    trans_func      _get_errno;     /*!< Get the errno */
     connect_async_func _connect_async;      /*!< non-blocking connect function of this transport */
     payload_transfer_func  _parent_transfer;        /*!< Function returning underlying transport layer */
     esp_tls_error_handle_t     error_handle;            /*!< Pointer to esp-tls error handle */
@@ -306,3 +307,22 @@ void esp_transport_set_errors(esp_transport_handle_t t, const esp_tls_error_hand
         memcpy(t->error_handle, error_handle, sizeof(esp_tls_last_error_t));
     }
 }
+
+int esp_transport_get_errno(esp_transport_handle_t t)
+{
+    if (t && t->_get_errno) {
+        return t->_get_errno(t);
+    }
+    return ESP_FAIL;
+}
+
+esp_err_t esp_transport_set_get_errno_func(esp_transport_handle_t t, trans_func _get_errno_func)
+{
+    if (t == NULL) {
+        return ESP_FAIL;
+    }
+    t->_get_errno = _get_errno_func;
+    return ESP_OK;
+}
+
+

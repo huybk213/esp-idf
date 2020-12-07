@@ -302,6 +302,7 @@ esp_err_t esp_http_client_set_username(esp_http_client_handle_t client, const ch
     }
     if (client->connection_info.username != NULL) {
         free(client->connection_info.username);
+	
     }
     client->connection_info.username = username ? strdup(username) : NULL;
     return ESP_OK;
@@ -1159,6 +1160,14 @@ static esp_err_t esp_http_client_request_send(esp_http_client_handle_t client, i
     return ESP_OK;
 }
 
+int esp_http_client_get_errno(esp_http_client_handle_t client)
+{
+    if (client && client->transport) {
+        return esp_transport_get_errno(client->transport);
+    }
+    return ESP_FAIL;
+}
+
 static esp_err_t esp_http_client_send_post_data(esp_http_client_handle_t client)
 {
     if (client->state != HTTP_STATE_REQ_COMPLETE_HEADER) {
@@ -1357,3 +1366,4 @@ esp_err_t esp_http_client_get_url(esp_http_client_handle_t client, char *url, co
     }
     return ESP_FAIL;
 }
+

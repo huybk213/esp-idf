@@ -314,6 +314,29 @@ esp_err_t esp_transport_set_parent_transport_func(esp_transport_handle_t t, payl
 esp_tls_error_handle_t esp_transport_get_error_handle(esp_transport_handle_t t);
 
 
+/**
+ *  @brief      Get Current socket errno
+ *
+ * @param[in]  t        The transport handle
+ *
+ * @return
+ *   - The current errno
+ *   - ESP_FAIL
+ */
+int esp_transport_get_errno(esp_transport_handle_t t);
+
+/**
+ * @brief      Set transport get errno functions for the transport handle
+ *
+ * @param[in]  t                The transport handle
+ * @param[in]  _get_errno_func  The get errno function pointer
+ *
+ * @return
+ *     - ESP_OK
+ *     - ESP_FAIL
++ */
+esp_err_t esp_transport_set_get_errno_func(esp_transport_handle_t t, trans_func _get_errno_func);
+
 
 #ifdef __cplusplus
 }
