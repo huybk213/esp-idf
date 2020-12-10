@@ -69,7 +69,9 @@ static esp_err_t w5500_update_link_duplex_speed(phy_w5500_t *w5500)
     eth_duplex_t duplex = ETH_DUPLEX_HALF;
     phycfg_reg_t phycfg;
 
+    // ESP_LOGI(TAG, "Read reg");
     PHY_CHECK(eth->phy_reg_read(eth, w5500->addr, W5500_REG_PHYCFGR, (uint32_t *) & (phycfg.val)) == ESP_OK, "read PHYCFG failed", err);
+    // ESP_LOGI(TAG, "Done");
     eth_link_t link = phycfg.link ? ETH_LINK_UP : ETH_LINK_DOWN;
     /* check if link status changed */
     if (w5500->link_status != link) {
@@ -85,17 +87,27 @@ static esp_err_t w5500_update_link_duplex_speed(phy_w5500_t *w5500)
             } else {
                 duplex = ETH_DUPLEX_HALF;
             }
+            // ESP_LOGI(TAG, "on_state_changed");  // HuyTV
             PHY_CHECK(eth->on_state_changed(eth, ETH_STATE_SPEED, (void *)speed) == ESP_OK,
                       "change speed failed", err);
+            // ESP_LOGI(TAG, "on_state_changed 2");// HuyTV
             PHY_CHECK(eth->on_state_changed(eth, ETH_STATE_DUPLEX, (void *)duplex) == ESP_OK,
                       "change duplex failed", err);
         }
+        else
+        {
+            // ESP_LOGE(TAG, "Link down"); // HuyTV
+        }
+        
+        // ESP_LOGI(TAG, "on_state_changed 3, link %d", link); // HuyTV
         PHY_CHECK(eth->on_state_changed(eth, ETH_STATE_LINK, (void *)link) == ESP_OK,
                   "change link failed", err);
         w5500->link_status = link;
     }
+    // ESP_LOGI(TAG, "on_state_changed 4"); // HuyTV
     return ESP_OK;
 err:
+    // ESP_LOGE(TAG, "on_state_changed 5"); // HuyTV
     return ESP_FAIL;
 }
 
@@ -112,10 +124,13 @@ err:
 static esp_err_t w5500_get_link(esp_eth_phy_t *phy)
 {
     phy_w5500_t *w5500 = __containerof(phy, phy_w5500_t, parent);
+    // ESP_LOGI(TAG, "w5500_get_link");
     /* Updata information about link, speed, duplex */
     PHY_CHECK(w5500_update_link_duplex_speed(w5500) == ESP_OK, "update link duplex speed failed", err);
+    // ESP_LOGD(TAG, "w5500_get_link ok");     // HuyTV
     return ESP_OK;
 err:
+    ESP_LOGW(TAG, "Failed");
     return ESP_FAIL;
 }
 
@@ -141,12 +156,10 @@ static esp_err_t w5500_reset_hw(esp_eth_phy_t *phy)
     phy_w5500_t *w5500 = __containerof(phy, phy_w5500_t, parent);
     // set reset_gpio_num to a negative value can skip hardware reset phy chip
     if (w5500->reset_gpio_num >= 0) {
-        // esp_rom_gpio_pad_select_gpio(w5500->reset_gpio_num);
         gpio_pad_select_gpio(w5500->reset_gpio_num);
         gpio_set_direction(w5500->reset_gpio_num, GPIO_MODE_OUTPUT);
         gpio_set_level(w5500->reset_gpio_num, 0);
-        // esp_rom_delay_us(100); // insert min input assert time
-        ets_delay_us(100);
+        ets_delay_us(100); // insert min input assert time
         gpio_set_level(w5500->reset_gpio_num, 1);
     }
     return ESP_OK;

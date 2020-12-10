@@ -105,6 +105,7 @@ static esp_err_t eth_on_state_changed(esp_eth_mediator_t *eth, esp_eth_state_t s
     esp_err_t ret = ESP_OK;
     esp_eth_driver_t *eth_driver = __containerof(eth, esp_eth_driver_t, mediator);
     esp_eth_mac_t *mac = eth_driver->mac;
+    ESP_LOGI(TAG, "eth_on_state_changed %d", state);
     switch (state) {
     case ETH_STATE_LLINIT: {
         if (eth_driver->on_lowlevel_init_done) {
@@ -126,8 +127,10 @@ static esp_err_t eth_on_state_changed(esp_eth_mediator_t *eth, esp_eth_state_t s
             ETH_CHECK(esp_event_post(ETH_EVENT, ETHERNET_EVENT_CONNECTED, &eth_driver, sizeof(eth_driver), 0) == ESP_OK,
                       "send ETHERNET_EVENT_CONNECTED event failed", err, ESP_FAIL);
         } else if (link == ETH_LINK_DOWN) {
+            ESP_LOGI(TAG, "send ETHERNET_EVENT_DISCONNECTED");
             ETH_CHECK(esp_event_post(ETH_EVENT, ETHERNET_EVENT_DISCONNECTED, &eth_driver, sizeof(eth_driver), 0) == ESP_OK,
                       "send ETHERNET_EVENT_DISCONNECTED event failed", err, ESP_FAIL);
+            ESP_LOGI(TAG, "send ETHERNET_EVENT_DISCONNECTED event success");
         }
         break;
     }
@@ -159,6 +162,7 @@ err:
 
 static void eth_check_link_timer_cb(TimerHandle_t xTimer)
 {
+    // ESP_LOGI(TAG, "eth_check_link_timer_cb");
     esp_eth_driver_t *eth_driver = (esp_eth_driver_t *)pvTimerGetTimerID(xTimer);
     esp_eth_phy_t *phy = eth_driver->phy;
     esp_eth_increase_reference(eth_driver);

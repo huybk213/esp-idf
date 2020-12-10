@@ -91,7 +91,7 @@ static esp_err_t w5500_write(emac_w5500_t *emac, uint32_t address, const void *v
 static esp_err_t w5500_read(emac_w5500_t *emac, uint32_t address, void *value, uint32_t len)
 {
     esp_err_t ret = ESP_OK;
-
+    
     spi_transaction_t trans = {
         .cmd = (address >> W5500_ADDR_OFFSET),
         .addr = ((address & 0xFFFF) | (W5500_ACCESS_MODE_READ << W5500_RWB_OFFSET) | W5500_SPI_OP_MODE_VDM),
@@ -99,13 +99,18 @@ static esp_err_t w5500_read(emac_w5500_t *emac, uint32_t address, void *value, u
         .rx_buffer = value
     };
     if (w5500_lock(emac)) {
+        // ESP_LOGE(TAG, "Polling transmit length %d", len);
         if (spi_device_polling_transmit(emac->spi_hdl, &trans) != ESP_OK) {
             ESP_LOGE(TAG, "%s(%d): spi transmit failed", __FUNCTION__, __LINE__);
             ret = ESP_FAIL;
+        } else {
+            // uint8_t * tmp = (uint8_t*)value;
+            // *tmp = trans.rx_data[0];      // hUYtv
         }
         w5500_unlock(emac);
     } else {
         ret = ESP_ERR_TIMEOUT;
+        ESP_LOGE(TAG, "%s(%d): spi transmit timeout", __FUNCTION__, __LINE__);
     }
     return ret;
 }
@@ -132,12 +137,15 @@ err:
 static esp_err_t w5500_get_tx_free_size(emac_w5500_t *emac, uint16_t *size)
 {
     esp_err_t ret = ESP_OK;
-    uint16_t free0, free1 = 0;
+    uint16_t free0 = 0, free1 = 0;
     // read TX_FSR register more than once, until we get the same value
     // this is a trick because we might be interrupted between reading the high/low part of the TX_FSR register (16 bits in length)
     do {
         MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_TX_FSR(0), &free0, sizeof(free0)) == ESP_OK, "read TX FSR failed", err, ESP_FAIL);
-        MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_TX_FSR(0), &free1, sizeof(free1)) == ESP_OK, "read TX FSR failed", err, ESP_FAIL);
+        if (free0)
+        {
+            MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_TX_FSR(0), &free1, sizeof(free1)) == ESP_OK, "read TX FSR failed", err, ESP_FAIL);
+        }
     } while (free0 != free1);
 
     *size = __builtin_bswap16(free0);
@@ -248,6 +256,7 @@ static esp_err_t w5500_setup_default(emac_w5500_t *emac)
     // Only SOCK0 can be used as MAC RAW mode, so we give the whole buffer (16KB TX and 16KB RX) to SOCK0
     MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_RXBUF_SIZE(0), &reg_value, sizeof(reg_value)) == ESP_OK, "set rx buffer size failed", err, ESP_FAIL);
     MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_TXBUF_SIZE(0), &reg_value, sizeof(reg_value)) == ESP_OK, "set tx buffer size failed", err, ESP_FAIL);
+    ESP_LOGI(TAG, "Set socket size success\r\n");
     reg_value = 0;
     for (int i = 1; i < 8; i++) {
         MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_RXBUF_SIZE(i), &reg_value, sizeof(reg_value)) == ESP_OK, "set rx buffer size failed", err, ESP_FAIL);
@@ -436,10 +445,10 @@ static esp_err_t emac_w5500_set_speed(esp_eth_mac_t *mac, eth_speed_t speed)
     esp_err_t ret = ESP_OK;
     switch (speed) {
     case ETH_SPEED_10M:
-        ESP_LOGD(TAG, "working in 10Mbps");
+        ESP_LOGI(TAG, "working in 10Mbps");
         break;
     case ETH_SPEED_100M:
-        ESP_LOGD(TAG, "working in 100Mbps");
+        ESP_LOGI(TAG, "working in 100Mbps");
         break;
     default:
         MAC_CHECK(false, "unknown speed", err, ESP_ERR_INVALID_ARG);
@@ -455,10 +464,10 @@ static esp_err_t emac_w5500_set_duplex(esp_eth_mac_t *mac, eth_duplex_t duplex)
     esp_err_t ret = ESP_OK;
     switch (duplex) {
     case ETH_DUPLEX_HALF:
-        ESP_LOGD(TAG, "working in half duplex");
+        ESP_LOGI(TAG, "working in half duplex");
         break;
     case ETH_DUPLEX_FULL:
-        ESP_LOGD(TAG, "working in full duplex");
+        ESP_LOGI(TAG, "working in full duplex");
         break;
     default:
         MAC_CHECK(false, "unknown duplex", err, ESP_ERR_INVALID_ARG);
@@ -501,13 +510,53 @@ static esp_err_t emac_w5500_set_peer_pause_ability(esp_eth_mac_t *mac, uint32_t 
 static esp_err_t emac_w5500_transmit(esp_eth_mac_t *mac, uint8_t *buf, uint32_t length)
 {
     esp_err_t ret = ESP_OK;
+    if (buf == NULL || length == 0)
+    {
+        return ESP_OK;
+    }
     emac_w5500_t *emac = __containerof(mac, emac_w5500_t, parent);
     uint16_t offset = 0;
 
+    // HuyTV
+    uint8_t sock_status = 0;
+    w5500_read(emac, W5500_REG_SOCK_SR(0), &sock_status, sizeof(sock_status));
+
     // check if there're free memory to store this packet
     uint16_t free_size = 0;
-    MAC_CHECK(w5500_get_tx_free_size(emac, &free_size) == ESP_OK, "get free size failed", err, ESP_FAIL);
-    MAC_CHECK(length <= free_size, "free size (%d) < send length (%d)", err, ESP_FAIL, free_size, length);
+    uint32_t wait_tx_empty_count = 1000;
+    uint32_t success = 0;
+    // ESP_LOGE(TAG, "Send-%d\r\n", length);
+    // ESP_LOGE(TAG, "Sock status %d\r\n", sock_status);
+    while (wait_tx_empty_count--)
+    {
+        static uint32_t t = 0;
+        MAC_CHECK(w5500_get_tx_free_size(emac, &free_size) == ESP_OK, "get free size failed", err, ESP_FAIL);
+        if(length > free_size)
+        {
+            if (t++ == 20)
+            {
+                ESP_LOGE(TAG, "Free %d\r\n", free_size);
+                ESP_ERROR_CHECK(-1);
+                t = 0;
+            }
+            success = 0;
+            vTaskDelay(10);
+        }
+        else
+        {
+            t = 0;
+            success = 1;
+            break;
+        }
+    }
+    // if (wait_tx_empty_count <= 0)
+    // {
+    //     ESP_LOGE(TAG, "Sock status %d\r\n", sock_status);
+    // }
+
+    MAC_CHECK(success, "free size (%d) < send length (%d)", err, ESP_FAIL, free_size, length);
+    // MAC_CHECK(w5500_get_tx_free_size(emac, &free_size) == ESP_OK, "get free size failed", err, ESP_FAIL);
+    // MAC_CHECK(length <= free_size, "free size (%d) < send length (%d)", err, ESP_FAIL, free_size, length);
     // get current write pointer
     MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_TX_WR(0), &offset, sizeof(offset)) == ESP_OK, "read TX WR failed", err, ESP_FAIL);
     offset = __builtin_bswap16(offset);
@@ -519,16 +568,40 @@ static esp_err_t emac_w5500_transmit(esp_eth_mac_t *mac, uint8_t *buf, uint32_t 
     MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_TX_WR(0), &offset, sizeof(offset)) == ESP_OK, "write TX WR failed", err, ESP_FAIL);
     // issue SEND command
     MAC_CHECK(w5500_send_command(emac, W5500_SCR_SEND, 100) == ESP_OK, "issue SEND command failed", err, ESP_FAIL);
-
+#if 0   // original
     // pooling the TX done event
     uint8_t status = 0;
     do {
         MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_IR(0), &status, sizeof(status)) == ESP_OK, "read SOCK0 IR failed", err, ESP_FAIL);
     } while (!(status & W5500_SIR_SEND));
-    // clear the event bit
-    status  = W5500_SIR_SEND;
-    MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_IR(0), &status, sizeof(status)) == ESP_OK, "write SOCK0 IR failed", err, ESP_FAIL);
+#else   // HuyTV
+    // pooling the TX done event
+    uint8_t status = 0;
+    volatile int32_t count = 0;
+    do {
+        MAC_CHECK(w5500_read(emac, W5500_REG_SOCK_IR(0), &status, sizeof(status)) == ESP_OK, "read SOCK0 IR failed", err, ESP_FAIL);
+    }
+    while (!(status & W5500_SIR_SEND) && (count++ < 5000));
+    if (count >= 5000 && !(status & W5500_SIR_SEND))
+    {
+        ESP_LOGE(TAG, "Failed cnt %d, status %d\r\n", count, status);       // HuyTV
+        ret = ESP_FAIL;
+        goto err;
+    }
+#endif
 
+    // ESP_LOGE(TAG, "count %d\r\n", count);
+    // clear the event bit
+    status = W5500_SIR_SEND;
+    MAC_CHECK(w5500_write(emac, W5500_REG_SOCK_IR(0), &status, sizeof(status)) == ESP_OK, "write SOCK0 IR failed", err, ESP_FAIL);
+    if (w5500_get_tx_free_size(emac, &free_size) == ESP_OK)
+    {
+        // ESP_LOGI(TAG, "TX buf free size %d\r\n", free_size);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Get tx free error\r\n");
+    }
 err:
     return ret;
 }
@@ -574,7 +647,6 @@ static esp_err_t emac_w5500_init(esp_eth_mac_t *mac)
     esp_err_t ret = ESP_OK;
     emac_w5500_t *emac = __containerof(mac, emac_w5500_t, parent);
     esp_eth_mediator_t *eth = emac->eth;
-    // esp_rom_gpio_pad_select_gpio(emac->int_gpio_num);
     gpio_pad_select_gpio(emac->int_gpio_num);
     gpio_set_direction(emac->int_gpio_num, GPIO_MODE_INPUT);
     gpio_set_pull_mode(emac->int_gpio_num, GPIO_PULLUP_ONLY);
