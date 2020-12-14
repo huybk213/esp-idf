@@ -317,9 +317,14 @@ int esp_mbedtls_add_rx_buffer(mbedtls_ssl_context *ssl)
     ESP_LOGV(TAG, "--> add rx");
 
     if (ssl->in_buf) {
-        ESP_LOGV(TAG, "in buffer is not empty");
-        ret = 0;
-        goto exit;
+        if (ssl->in_iv) {
+            ESP_LOGV(TAG, "in buffer is not empty");
+            ret = 0;
+            goto exit;
+        }
+        else{
+            cached = 1;
+        }
     }
 
     ssl->in_hdr = msg_head;
